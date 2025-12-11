@@ -1,0 +1,22 @@
+<resources>
+<string name="app_name">pannsOnnx</string>
+<string name="start_recording">Start Recording</string>
+<string name="stop_recording">Stop Recording</string>
+<string name="meal_duration_tracker">Meal Duration Tracker</string>
+<string name="detected_audio_tags">Detected Audio Tags</string>
+<string name="ready_to_start">Ready to start</string>
+<string name="recording_processing">Recording and processing audio...</string>
+<string name="stopped">Stopped</string>
+<string name="meal_start">Meal Start: %1$s</string>
+<string name="meal_end">Meal End: %1$s</string>
+<string name="meal_duration">Duration: %1$d minutes</string>
+<string name="not_detected">Not detected</string>
+<string name="ongoing">Ongoing</string>
+<string name="permissions_required">Permissions required for audio recording</string>
+<string name="audio_processing_started">Audio processing started for 2 hours from %1$d:00</string>
+<string name="audio_processing_stopped">Audio processing stopped</string>
+<string name="select_time_window">Select 2-Hour Recording Window</string>
+<string name="select_starting_hour">Choose the starting hour for a 2-hour audio recording session</string>
+<string name="start">Start</string>
+<string name="cancel">Cancel</string>
+</resources>
