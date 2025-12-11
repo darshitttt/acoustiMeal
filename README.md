@@ -51,6 +51,7 @@ Optional: The app can store all predicted tags for offline analysis.
 ---
 
 ## Contact
+
 For any questions or contributions, feel free to open an issue or submit a pull request.
 ---
 **AcoustiMeal** aims to support research in Health Psychology by enabling scalable, in-the-wild analysis of mealtime behaviour. The code is released to encourage reproducibility and extension in future studies.
