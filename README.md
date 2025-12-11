@@ -4,6 +4,9 @@ AcoustiMeal is an Android application designed to estimate meal timing and durat
 
 This repository contains the complete source code for the demo presented in our paper.
 
+- If you want to download the APK directly, you can download it from [here](https://drive.google.com/file/d/1a1MY6i05AA5rPJ2lkrwkK_eViz25WPsi/view?usp=drive_link)
+- If you want to use the source code to rebuild the app from scratch and extend it, you will need to download the ONNX version of the EPANNs model from [here](https://drive.google.com/file/d/1sttPURJ7AdaZxyGGrIqZoRe2F1MzBZS-/view?usp=drive_link)
+
 ---
 
 ## Overview
@@ -53,5 +56,7 @@ Optional: The app can store all predicted tags for offline analysis.
 ## Contact
 
 For any questions or contributions, feel free to open an issue or submit a pull request.
+
 ---
+
 **AcoustiMeal** aims to support research in Health Psychology by enabling scalable, in-the-wild analysis of mealtime behaviour. The code is released to encourage reproducibility and extension in future studies.
