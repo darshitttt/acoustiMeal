@@ -88,7 +88,13 @@ class AudioProcessingService : Service() {
         "water running", "sizzling", "bubbling", "eating", "chewing", "food"
     )
 
-    private lateinit var onnxModelProcessor: ONNXModelProcessor
+    private lateinit var modelProcessor: JointModelProcessor
+    private lateinit var diarAcc: DiarizationAccumulator
+    private lateinit var cfg: DeployConfig
+    private var mealIdx: IntArray = IntArray(0)
+    private var recStartMs: Long = 0L           // wall-clock time of the first recorded sample of this recording
+    // diarization results are written on this scope so they survive the service being destroyed right after stop
+    private val finalizeScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     private var shouldSaveTags = false
     private var tagFileWriter: BufferedWriter? = null
@@ -105,7 +111,13 @@ class AudioProcessingService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        onnxModelProcessor = ONNXModelProcessor(this)
+        modelProcessor = JointModelProcessor(this)
+        cfg = modelProcessor.config
+        require(cfg.sampleRate == sampleRate) { "model expects ${cfg.sampleRate} Hz, service records at $sampleRate Hz" }
+        diarAcc = DiarizationAccumulator(cfg.windowS, cfg.hopS)
+        mealIdx = cfg.mealIndices.takeIf { it.isNotEmpty() }
+            ?: cfg.classes.indices.filter { i -> kitchenRelatedTags.any { cfg.classes[i].contains(it, ignoreCase = true) } }.toIntArray()
+        Log.i(TAG, "Meal tags: ${mealIdx.map { cfg.classes[it] }}")
         handler = Handler(Looper.getMainLooper())
     }
 
@@ -188,6 +200,7 @@ class AudioProcessingService : Service() {
         currentTags.clear()
         allTagsInSession.clear()
         lastKitchenTagTime = 0L
+        diarAcc.discardBefore(Double.MAX_VALUE)
 
         startForeground(1, createNotification())
 
@@ -207,6 +220,8 @@ class AudioProcessingService : Service() {
             }
 
             audioRecord?.startRecording()
+            recStartMs = System.currentTimeMillis()
+            Log.i(TAG, "AudioRecord running at ${audioRecord?.sampleRate} Hz (requested $sampleRate Hz)")
             // Notify the UI that recording has actually started.
 
             serviceScope.launch(Dispatchers.Main) {
@@ -228,23 +243,21 @@ class AudioProcessingService : Service() {
     }
 
     private suspend fun processAudioStream() = withContext(Dispatchers.IO) {
-        val audioBuffer = ShortArray(sampleRate * 2)
-        var bufferIndex = 0
-        val readBuffer = ShortArray(bufferSize)
+        val readBuffer = ShortArray(sampleRate / 10)                       // ~100 ms per blocking read
+        val windower = AudioWindower(cfg.windowSamples, cfg.hopSamples, readBuffer.size)
+        val window = FloatArray(cfg.windowSamples)
 
         while (isRecording && audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-            val bytesRead = audioRecord?.read(readBuffer, 0, readBuffer.size) ?: 0
-
-            if (bytesRead > 0) {
-                for (i in 0 until minOf(bytesRead, audioBuffer.size - bufferIndex)) {
-                    audioBuffer[bufferIndex + i] = readBuffer[i]
-                }
-                bufferIndex += bytesRead
-
-                if (bufferIndex >= audioBuffer.size) {
-                    processAudioChunk(audioBuffer.clone())
-                    bufferIndex = 0
-                }
+            val n = audioRecord?.read(readBuffer, 0, readBuffer.size) ?: 0   // blocks until audio is available
+            if (n < 0) {
+                Log.e(TAG, "AudioRecord.read failed: $n")
+                break
+            }
+            windower.push(readBuffer, n)
+            // one window every hop (1 s): window k covers samples [k*hop, k*hop + windowSamples)
+            while (windower.hasWindow()) {
+                val k = windower.nextWindow(window)
+                processWindow(window, k)
             }
 
             val currentTime = System.currentTimeMillis()
@@ -256,6 +269,9 @@ class AudioProcessingService : Service() {
                 }
                 writeTagsToFile(allTagsInSession)
                 allTagsInSession.clear()
+                val mealS = mealStartTime
+                val mealE = mealEndTime
+                if (mealS != null && mealE != null) finalizeDiarization(mealS, mealE)
                 withContext(Dispatchers.Main) {
                     onMealTimeUpdatedListener?.invoke(mealStartTime, mealEndTime)
                 }
@@ -263,29 +279,40 @@ class AudioProcessingService : Service() {
                 mealEndTime = null
                 lastKitchenTagTime = 0L
             }
-
-            delay(100)
         }
     }
 
-    private suspend fun processAudioChunk(audioData: ShortArray) = try {
-        val predictions = onnxModelProcessor.predict(audioData)
+    /** Class indices whose probability reached their calibrated threshold, strongest first (max 10). */
+    private fun detectedTags(p: FloatArray): List<AudioTag> {
+        val r = p.indices.filter { cfg.groups.getOrNull(it) != "confuser" && p[it] >= cfg.tagThresholds[it] }
+            .sortedByDescending { p[it] }.take(10).map { AudioTag(cfg.classes[it], p[it]) }
+        return if (r.isEmpty()) listOf(AudioTag("Others", 1f)) else r
+    }
+
+    private suspend fun processWindow(window: FloatArray, windowIndex: Long) {
+        val t0 = System.nanoTime()
+        val out = try { modelProcessor.process(window) } catch (e: Exception) { Log.e(TAG, "Inference failed: ${e.message}", e); return }
+
+        if (windowIndex % 10L == 0L) Log.i(TAG, "window $windowIndex inference ${(System.nanoTime() - t0) / 1e6} ms")
+
+        if (out.embedding != null || out.overlapProb != null)
+            diarAcc.add(windowIndex, out.embedding, out.overlapProb, cfg.overlapThreshold ?: 0.5f)
+
+        val detected = detectedTags(out.tagProbs)
+        val shown = ArrayList(detected)
+        if (out.overlapFraction > 0f) shown.add(AudioTag("Overlapping speech (>=2 speakers)", out.overlapFraction))
+
         withContext(Dispatchers.Main) {
             currentTags.clear()
-            currentTags.addAll(predictions)
+            currentTags.addAll(shown)
             onTagsUpdatedListener?.invoke(currentTags)
 
             if (shouldSaveTags) {
-                writeTagsToFile(predictions)
+                writeTagsToFile(detected)
             }
 
-            val hasKitchenTags = predictions.any { tag ->
-                kitchenRelatedTags.any { kitchenTag ->
-                    tag.label.contains(kitchenTag, ignoreCase = true)
-                } && tag.confidence > 0.02f
-            }
-
-            if (hasKitchenTags) {
+            val hasMealTags = mealIdx.any { out.tagProbs[it] >= cfg.tagThresholds[it] }
+            if (hasMealTags) {
                 val currentTime = System.currentTimeMillis()
                 lastKitchenTagTime = currentTime
 
@@ -296,11 +323,64 @@ class AudioProcessingService : Service() {
 
                 onMealTimeUpdatedListener?.invoke(mealStartTime, mealEndTime)
             }
-            allTagsInSession.addAll(predictions)
+            allTagsInSession.addAll(detected)
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(this@AudioProcessingService, "Error processing audio chunk: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+
+    // ---------------------------------------------------------------- diarization output
+    /** Clusters the speech windows of [fromMs, toMs] and writes speakers_*.csv and overlap_*.csv (Documents/AcoustiMeal). */
+    private fun finalizeDiarization(fromMs: Long, toMs: Long) {
+        val startMs = recStartMs
+        val fromS = (fromMs - startMs) / 1000.0
+        val toS = (toMs - startMs) / 1000.0
+        finalizeScope.launch {
+            try {
+                val res = diarAcc.finalize(fromS, toS, cfg.clusterThreshold, cfg.mergeFraction)
+                diarAcc.discardBefore(toS)
+                val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date(fromMs))
+                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+                val abs = { sec: Double -> fmt.format(Date(startMs + (sec * 1000).toLong())) }
+                if (res.speakers.isNotEmpty()) {
+                    openDocWriter("speakers_$stamp.csv")?.use { w ->
+                        w.write("start,end,speaker\n")
+                        res.speakers.forEach { w.write("${abs(it.start)},${abs(it.end)},SPK${it.speaker}\n") }
+                    }
+                }
+                if (res.overlap.isNotEmpty()) {
+                    openDocWriter("overlap_$stamp.csv")?.use { w ->
+                        w.write("start,end\n")
+                        res.overlap.forEach { w.write("${abs(it.first)},${abs(it.second)}\n") }
+                    }
+                }
+                Log.i(TAG, "Diarization written: ${res.speakers.size} speaker turns, " +
+                        "${res.speakers.map { it.speaker }.toSet().size} speakers, ${res.overlap.size} overlap segments")
+            } catch (e: Exception) {
+                Log.e(TAG, "Diarization failed: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun openDocWriter(fileName: String, dirName: String = "AcoustiMeal"): BufferedWriter? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = applicationContext.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOCUMENTS + File.separator + dirName)
+                }
+                val uri = resolver.insert(MediaStore.Files.getContentUri("external"), values)
+                if (uri == null) { Log.e(TAG, "MediaStore insert failed for $fileName"); null }
+                else BufferedWriter(OutputStreamWriter(resolver.openOutputStream(uri)))
+            } else {
+                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), dirName)
+                if (!dir.exists() && !dir.mkdirs()) { Log.e(TAG, "Cannot create $dir"); null }
+                else BufferedWriter(FileWriter(File(dir, fileName), true))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Cannot open $fileName: ${e.message}", e)
+            null
+        }
     }
 
     private fun writeTagsToFile(tags: List<AudioTag>) {
@@ -470,6 +550,9 @@ class AudioProcessingService : Service() {
 
         if (mealStartTime != null && mealEndTime == null) {
             mealEndTime = System.currentTimeMillis()
+            val mealS = mealStartTime
+            val mealE = mealEndTime
+            if (mealS != null && mealE != null) finalizeDiarization(mealS, mealE)
             if (shouldSaveTags) {
                 writeMealTimesToFile(mealStartTime, mealEndTime)
                 writeTagsToFile(allTagsInSession)
@@ -546,5 +629,6 @@ class AudioProcessingService : Service() {
         super.onDestroy()
         stopProcessing()
         serviceScope.cancel()
+        if (::modelProcessor.isInitialized) modelProcessor.close()
     }
 }
