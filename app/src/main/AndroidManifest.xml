@@ -13,6 +13,7 @@ xmlns:tools="http://schemas.android.com/tools">
 
 <!-- Wake lock to keep service running -->
 <uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.INTERNET" />
 
 <application
     android:allowBackup="true"

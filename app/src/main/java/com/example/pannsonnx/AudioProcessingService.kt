@@ -41,6 +41,10 @@ import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 
 data class AudioTagSummary(val summary: String, val tags: List<AudioTag>)
 
@@ -420,13 +424,50 @@ class AudioProcessingService : Service() {
         }
     }
 
+    suspend fun triggerServerTaskNative(): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("https://wifo5-30.informatik.uni-mannheim.de:7443/trigger")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Content-Type", "application/json; utf-8")
+                connection.setRequestProperty("Accept", "application/json")
+                connection.doOutput = true
+
+                val jsonInputString = """{"participant_code":"3iwqs0vo","meal_probability":0.87}"""
+
+                // Write body data
+                connection.outputStream.use { os ->
+                    val input = jsonInputString.toByteArray(Charsets.UTF_8)
+                    os.write(input, 0, input.size)
+                }
+
+                // Read response
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    "Error: $responseCode"
+                }
+            } catch (e: Exception) {
+                "Exception: ${e.localizedMessage}"
+            }
+        }
+    }
 
     fun stopProcessing() {
         if (!isRecording) return
 
         handler?.removeCallbacksAndMessages(null)
 
-        // This is the fix for problems 2 and 4.
+        if (mealStartTime != null){
+            // Launch a coroutine using your serviceScope
+            serviceScope.launch {
+                val response = triggerServerTaskNative() // Replace with your actual server IP/port
+                Log.d("GESIS_Server", "Server response: $response")
+            }
+        }
+
         if (mealStartTime != null && mealEndTime == null) {
             mealEndTime = System.currentTimeMillis()
             if (shouldSaveTags) {
