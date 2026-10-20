@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- AcoustiMeal research-tool palette (light). Night overrides in values-night/colors.xml -->
+    <color name="bg">#F4F5F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="stroke">#DFE3E8</color>
+    <color name="ink">#12171E</color>
+    <color name="ink_muted">#5E6A78</color>
+    <color name="accent">#0B6E6E</color>
+    <color name="accent_dark">#075555</color>
+    <color name="on_accent">#FFFFFF</color>
+    <color name="rec">#C62828</color>
+    <color name="ok">#2E7D32</color>
+    <color name="warn">#A65F00</color>
 </resources>

@@ -3,26 +3,25 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="20dp">
 
     <TextView
-        android:layout_width="match_parent"
+        style="@style/Text.Overline"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Select starting hour:"
-        android:textSize="16sp"
-        android:layout_marginBottom="16dp" />
+        android:text="Daily start time" />
 
     <Spinner
         android:id="@+id/spinner_hour"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
         android:layout_marginBottom="16dp" />
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="The app will record and analyze audio for 2 hours starting from the selected time."
-        android:textSize="14sp"
-        android:textStyle="italic" />
-
+        android:text="Every day the app records and analyzes audio for 2 hours from this time, even when the app is closed. Stop Recording skips the rest of that day only."
+        android:textColor="@color/ink_muted"
+        android:textSize="13sp" />
 </LinearLayout>

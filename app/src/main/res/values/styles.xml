@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Text.Overline" parent="">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/ink_muted</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:letterSpacing">0.1</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="Text.Label" parent="">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/ink_muted</item>
+    </style>
+    <style name="Text.Value" parent="">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:fontFamily">monospace</item>
+    </style>
+</resources>

@@ -1,5 +1,5 @@
 <resources>
-<string name="app_name">pannsOnnx</string>
+<string name="app_name">AcoustiMeal</string>
 <string name="start_recording">Start Recording</string>
 <string name="stop_recording">Stop Recording</string>
 <string name="meal_duration_tracker">Meal Duration Tracker</string>

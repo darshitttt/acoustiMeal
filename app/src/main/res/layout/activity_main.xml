@@ -1,120 +1,278 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Meal Duration Tracker"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginBottom="16dp" />
+    android:background="@color/bg"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
-
-        <Button
-            android:id="@+id/button_start"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Start Recording"
-            android:layout_marginEnd="8dp" />
-
-        <Button
-            android:id="@+id/button_stop"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Stop Recording"
-            android:enabled="false"
-            android:layout_marginStart="8dp" />
-
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/text_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Ready to start"
-        android:textSize="16sp"
-        android:gravity="center"
-        android:layout_marginBottom="16dp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="16dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Save Audio Tags"
-            android:textSize="16sp" />
-
-        <Switch
-            android:id="@+id/switchSaveTags"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="?android:attr/selectableItemBackground"
-        android:padding="12dp"
-        android:layout_marginBottom="16dp">
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="16dp">
 
+        <!-- header -->
         <TextView
-            android:id="@+id/text_meal_start"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Meal Start: Not detected"
-            android:textSize="14sp"
-            android:layout_marginBottom="4dp" />
+            android:fontFamily="sans-serif-medium"
+            android:text="AcoustiMeal"
+            android:textColor="@color/ink"
+            android:textSize="22sp" />
 
         <TextView
-            android:id="@+id/text_meal_end"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Meal End: Not detected"
-            android:textSize="14sp"
-            android:layout_marginBottom="4dp" />
+            android:layout_marginBottom="14dp"
+            android:fontFamily="monospace"
+            android:text="eating-behaviour audio logger"
+            android:textColor="@color/ink_muted"
+            android:textSize="12sp" />
 
+        <!-- session -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                style="@style/Text.Overline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Session" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <View
+                    android:id="@+id/view_status_dot"
+                    android:layout_width="10dp"
+                    android:layout_height="10dp"
+                    android:background="@drawable/bg_dot" />
+
+                <TextView
+                    android:id="@+id/text_status"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Ready to start"
+                    android:textColor="@color/ink"
+                    android:textSize="17sp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/text_schedule"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="monospace"
+                android:text="No daily window set"
+                android:textColor="@color/ink_muted"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_start"
+                    style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="Start Recording"
+                    android:textAllCaps="false"
+                    app:cornerRadius="8dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/button_stop"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:enabled="false"
+                    android:text="Stop Recording"
+                    android:textAllCaps="false"
+                    android:textColor="@color/stop_content"
+                    app:cornerRadius="8dp"
+                    app:strokeColor="@color/stop_content" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- reliability warning (hidden unless something needs fixing) -->
         <TextView
-            android:id="@+id/text_meal_duration"
+            android:id="@+id/text_setup"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Duration: --"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_setup"
+            android:fontFamily="monospace"
+            android:padding="12dp"
+            android:textColor="@color/warn"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
+        <!-- meal detection -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                style="@style/Text.Overline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Meal detection" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/Text.Label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Start" />
+
+                <TextView
+                    android:id="@+id/text_meal_start"
+                    style="@style/Text.Value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--:--:--" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/Text.Label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="End" />
+
+                <TextView
+                    android:id="@+id/text_meal_end"
+                    style="@style/Text.Value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="--:--:--" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <TextView
+                    style="@style/Text.Label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Duration" />
+
+                <TextView
+                    android:id="@+id/text_meal_duration"
+                    style="@style/Text.Value"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="--"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- save tags -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="10dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Save audio tags"
+                    android:textColor="@color/ink"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="Documents/AcoustiMeal"
+                    android:textColor="@color/ink_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/switchSaveTags"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- live tags -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical">
+
+            <TextView
+                style="@style/Text.Overline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="16dp"
+                android:text="Detected audio tags" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler_view_tags"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:paddingBottom="8dp" />
+        </LinearLayout>
     </LinearLayout>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Detected Audio Tags"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="8dp" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_view_tags"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
-
 </LinearLayout>

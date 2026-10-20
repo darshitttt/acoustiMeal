@@ -1,307 +1,282 @@
-// MainActivity.kt
 package com.example.pannsonnx
 
 import android.Manifest
+import android.app.AlarmManager
+import android.content.BroadcastReceiver
 import android.content.ComponentName
-import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Build
-import android.os.Bundle
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.pannsonnx.databinding.ActivityMainBinding
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
+/**
+ * UI only. Recording is driven by the saved daily window + AlarmManager + the foreground service, so nothing here is
+ * needed for it to run. The activity shows state and (when the service is running) live tags.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var store: ScheduleStore
+    private lateinit var tagAdapter: TagAdapter
+
     private var audioService: AudioProcessingService? = null
-    private var serviceBound = false
+    private var bindRequested = false
 
-    private lateinit var tagAdapter: TagAdapter // Assuming TagAdapter is defined elsewhere
-    // It should handle updating the RecyclerView.
-    private val PREFS_NAME = "MealTrackerPrefs"
-    private val KEY_SCHEDULED_HOUR = "scheduledHour"
-    private val KEY_SCHEDULED_MINUTE = "scheduledMinute"
-    private val DEFAULT_SCHEDULE_TIME = -1 // Used to indicate no time is saved
+    private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val clockFmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
-    private val requestPermissions = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        // Check if the RECORD_AUDIO permission is granted.
-        //val writeStorageGranted = permissions[Manifest.permission.WRITE_EXTERNAL_STORAGE] ?: false
-        val recordAudioGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
+    private val requestPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            if (hasMic()) onReady()
+            else Toast.makeText(this, "Microphone permission is required for recording", Toast.LENGTH_LONG).show()
+        }
 
-        if (recordAudioGranted) {
-            // All necessary permissions granted, proceed with setting up the time window and service.
-            setupTimeWindow()
-        } else {
-            // Inform the user that permissions are essential.
-            Toast.makeText(this, "RECORD_AUDIO permission is required for this app to function.", Toast.LENGTH_LONG).show()
-            // Do NOT proceed with setupTimeWindow() if permissions are not granted.
+    /** Service tells us when a session starts/stops (e.g. started by the alarm while the app is open). */
+    private val stateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            bindIfRunning()
+            refreshUi()
         }
     }
 
     private val serviceConnection = object : ServiceConnection {
-        @RequiresApi(Build.VERSION_CODES.O)
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            // Get the service instance from the binder.
-            val binder = service as AudioProcessingService.AudioServiceBinder
-            audioService = binder.getService()
-            serviceBound = true
-
-            // Set up listeners for real-time updates from the service.
-            // This ensures UI updates are driven by actual data changes from the service.
-            audioService?.setOnTagsUpdatedListener { tags ->
-                runOnUiThread {
-                    tagAdapter.updateTags(tags)
-                }
-            }
-
-            audioService?.setOnMealTimeUpdatedListener { startTime, endTime ->
-                runOnUiThread {
-                    updateMealTimeDisplay(startTime, endTime)
-                }
-            }
-
-            // This is the crucial new listener to correctly update the UI status.
-            audioService?.setOnRecordingStatusChangedListener { isNowRecording ->
-                runOnUiThread {
-                    val statusText = if (isNowRecording) {
-                        "Recording and processing audio..."
-                    } else {
-                        val (savedHour, savedMinute) = loadScheduledTime()
-                        if (savedHour != DEFAULT_SCHEDULE_TIME) {
-                            binding.textStatus.text = "Awaiting scheduled start (${String.format("%02d:%02d", savedHour, savedMinute)})"
-                            binding.buttonStart.isEnabled = true
-                            binding.buttonStop.isEnabled = false
-                        } else {
-                            binding.textStatus.text = "Ready to start"
-                            binding.buttonStart.isEnabled = true
-                            binding.buttonStop.isEnabled = false
-                        }
-                        "Audio processing is inactive."
-                    }
-                    binding.textStatus.text = statusText
-                }
-            }
-            autoStartProcessingIfScheduled()
+            val svc = (service as AudioProcessingService.AudioServiceBinder).getService()
+            audioService = svc
+            svc.setOnTagsUpdatedListener { tags -> tagAdapter.updateTags(tags) }
+            svc.setOnMealTimeUpdatedListener { s, e -> updateMealTimeDisplay(s, e) }
+            svc.setOnRecordingStatusChangedListener { refreshUi() }
+            svc.setShouldSaveTags(binding.switchSaveTags.isChecked)
+            updateMealTimeDisplay(svc.currentMealStart(), null)
+            refreshUi()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            // Reset service reference and binding status when the service disconnects.
             audioService = null
-            serviceBound = false
         }
-
     }
 
-    @RequiresApi(Build.VERSION_CODES.O) // Annotation needed for features like Notification Channels,
-    // though the fragment manager itself isn't restricted.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        store = ScheduleStore(this)
 
-        setupRecyclerView()
-        setupClickListeners()
-        checkPermissions() // Check permissions on app start.
+        tagAdapter = TagAdapter()
+        binding.recyclerViewTags.layoutManager = LinearLayoutManager(this)
+        binding.recyclerViewTags.adapter = tagAdapter
+
+        binding.switchSaveTags.isChecked = store.saveTags
+        binding.switchSaveTags.setOnCheckedChangeListener { _, checked ->
+            store.saveTags = checked
+            audioService?.setShouldSaveTags(checked)
+        }
+
+        supportFragmentManager.setFragmentResultListener(TimeWindowDialog.REQUEST_KEY, this) { _, b ->
+            onWindowChosen(b.getInt(TimeWindowDialog.KEY_HOUR), b.getInt(TimeWindowDialog.KEY_MINUTE))
+        }
+
+        binding.buttonStart.setOnClickListener {
+            if (!hasMic()) checkPermissions()
+            else TimeWindowDialog.newInstance(store.hour, store.minute).show(supportFragmentManager, "TimeWindowDialog")
+        }
+        binding.buttonStop.setOnClickListener { stopForToday() }
+        binding.textSetup.setOnClickListener { openSetupSettings() }
+
+        updateMealTimeDisplay(null, null)
+        checkPermissions()
     }
 
-    private fun setupRecyclerView() {
-        tagAdapter = TagAdapter() // Initialize your TagAdapter.
-        binding.recyclerViewTags.apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = tagAdapter
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(
+            this, stateReceiver, IntentFilter(AudioProcessingService.ACTION_STATE_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        bindIfRunning()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshUi()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        unregisterReceiver(stateReceiver)
+        audioService?.clearListeners()
+        audioService = null
+        if (bindRequested) {
+            unbindService(serviceConnection)   // the service itself keeps running; we only detach the UI
+            bindRequested = false
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun setupClickListeners() {
-        binding.buttonStart.setOnClickListener {
-            // Ensure the service is bound before attempting to show the time picker.
-            if (serviceBound && audioService != null) {
-                showTimePickerDialog()
-            } else {
-                // If service is not bound (e.g., due to permission denial), re-check permissions.
-                Toast.makeText(this, "Service not ready. Checking permissions...", Toast.LENGTH_SHORT).show()
-                checkPermissions()
+    // ------------------------------------------------------------------------------------------------ actions
+    private fun onWindowChosen(h: Int, m: Int) {
+        if (!hasMic()) { checkPermissions(); return }
+        store.save(h, m)   // persisted: survives app/process/reboot; also clears "stopped today"
+        ScheduleManager.reschedule(this, startIfActive = true)
+        ScheduleManager.arm(this)   // start the always-on service while the app is visible
+        refreshUi()
+        Toast.makeText(this, "Daily window set: ${windowText()}", Toast.LENGTH_LONG).show()
+    }
+
+    /** "Stop Recording" = stop now and skip the rest of today's window; tomorrow's window runs as usual. */
+    private fun stopForToday() {
+        ScheduleManager.stopForToday(this)
+        if (AudioProcessingService.isRunning) {
+            startService(Intent(this, AudioProcessingService::class.java).setAction(AudioProcessingService.ACTION_STOP))
+        }
+        updateMealTimeDisplay(null, null)
+        refreshUi()
+        Toast.makeText(this, "Stopped for today", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun onReady() {
+        ScheduleManager.reschedule(this, startIfActive = true)   // heals alarms, resumes if inside today's window
+        ScheduleManager.arm(this)
+        bindIfRunning()
+        refreshUi()
+    }
+
+    // ------------------------------------------------------------------------------------------ service binding
+    private fun bindIfRunning() {
+        if (bindRequested || !AudioProcessingService.isRunning) return
+        bindRequested = bindService(
+            Intent(this, AudioProcessingService::class.java), serviceConnection, Context.BIND_AUTO_CREATE
+        )
+    }
+
+    // ------------------------------------------------------------------------------------------------------ UI
+    private fun refreshUi() {
+        val now = System.currentTimeMillis()
+        val running = AudioProcessingService.isRunning
+        val next = ScheduleManager.nextWindow(store, now)
+        val today = ScheduleManager.dayKey(now)
+        val nextToday = next != null && ScheduleManager.dayKey(next.startMs) == today
+        val stoppedToday = store.stoppedKey == today
+
+        val status: String
+        val detail: String
+        val dot: Int
+        when {
+            running -> {
+                status = "Recording and processing audio..."
+                detail = next?.let { "Until ${timeFmt.format(Date(it.endMs))} · daily ${windowText()}" } ?: "Daily ${windowText()}"
+                dot = R.color.rec
+            }
+            !store.isSet -> {
+                status = "Ready to start"
+                detail = "No daily window set"
+                dot = R.color.ink_muted
+            }
+            next != null && next.startMs <= now -> {
+                status = "Starting..."
+                detail = "Daily ${windowText()}"
+                dot = R.color.warn
+            }
+            stoppedToday -> {
+                status = "Stopped for today"
+                detail = "Next: tomorrow ${timeFmt.format(Date(next?.startMs ?: now))} · daily ${windowText()}"
+                dot = R.color.ink_muted
+            }
+            nextToday -> {
+                status = "Waiting for scheduled start"
+                detail = "Today ${timeFmt.format(Date(next!!.startMs))} · daily ${windowText()}"
+                dot = R.color.warn
+            }
+            else -> {
+                status = "Idle"
+                detail = "Next: tomorrow ${timeFmt.format(Date(next?.startMs ?: now))} · daily ${windowText()}"
+                dot = R.color.ok
             }
         }
+        binding.textStatus.text = status
+        binding.textSchedule.text = detail
+        binding.viewStatusDot.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, dot))
 
-        binding.buttonStop.setOnClickListener {
-            stopAudioProcessing()
-        }
+        binding.buttonStart.isEnabled = !running
+        binding.buttonStop.isEnabled = running || nextToday
 
-        binding.switchSaveTags.setOnCheckedChangeListener { _, isChecked ->
-            // Pass the state of the switch to the service.
-            audioService?.setShouldSaveTags(isChecked)
-            // Inform the user about the new state.
-            val message = if (isChecked) "Saving audio tags enabled" else "Saving audio tags disabled"
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        }
+        updateSetupWarning()
     }
 
-    private fun checkPermissions() {
-        // Only request RECORD_AUDIO as it's the primary permission for this app's core functionality.
-        // WRITE_EXTERNAL_STORAGE and READ_EXTERNAL_STORAGE are generally not needed for
-        // internal app data or processing, especially on modern Android versions.
-        val permissions = arrayOf(
-            //android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.RECORD_AUDIO
-        )
-
-        // Filter permissions that are not yet granted.
-        val permissionsToRequest = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        Log.d(TAG, "Permissions: $permissionsToRequest")
-        if (permissionsToRequest.isNotEmpty()) {
-            // Request permissions if any are missing.
-            requestPermissions.launch(permissionsToRequest.toTypedArray())
-        } else {
-            // If all permissions are already granted, proceed with time window setup.
-            setupTimeWindow()
-        }
-    }
-
-    private fun setupTimeWindow() {
-        // Bind to the audio processing service. This will establish the connection
-        // and allow interaction with the service.
-        val intent = Intent(this, AudioProcessingService::class.java)
-        // BIND_AUTO_CREATE ensures the service is created if it's not already running.
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-    }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun autoStartProcessingIfScheduled() {
-        val (savedHour, savedMinute) = loadScheduledTime()
-
-        if (savedHour != DEFAULT_SCHEDULE_TIME) {
-            startAudioProcessing(savedHour, savedMinute)
-            // Update status to reflect awaiting schedule based on saved time
-            binding.textStatus.text = "Awaiting scheduled start (${String.format("%02d:%02d", savedHour, savedMinute)})"
-            Toast.makeText(this, "Auto-scheduling with last saved time.", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun showTimePickerDialog() {
-        // Display the TimeWindowDialog to allow the user to select a start hour.
-        val dialog = TimeWindowDialog { selectedHour, selectedMinute ->
-            startAudioProcessing(selectedHour, selectedMinute)
-        }
-        dialog.show(supportFragmentManager, "TimeWindowDialog")
-    }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun startAudioProcessing(selectedHour: Int, selectedMinute: Int) {
-        saveScheduledTime(selectedHour, selectedMinute)
-
-        // Call the service method to start audio processing.
-        audioService?.startProcessing(selectedHour, selectedMinute)
-
-        // Update UI state to reflect that processing has started.
-        binding.buttonStart.isEnabled = false
-        binding.buttonStop.isEnabled = true
-        //binding.textStatus.text = "Recording and processing audio..."
-        binding.textStatus.text = "Awaiting scheduled start..."
-
-        // Provide immediate feedback to the user.
-        // The service's internal scheduling will handle the actual start time.
-        Toast.makeText(this, "Audio processing scheduled for ${selectedHour}:${selectedMinute}", Toast.LENGTH_LONG).show()
-    }
-
-    private fun stopAudioProcessing() {
-        // Call the service method to stop audio processing.
-        audioService?.stopProcessing()
-
-        // Update UI state to reflect that processing has stopped.
-        binding.buttonStart.isEnabled = true
-        binding.buttonStop.isEnabled = false
-        binding.textStatus.text = "Stopped"
-
-        // Clear any displayed meal time information.
-        binding.textMealStart.text = "Meal Start: Not detected"
-        binding.textMealEnd.text = "Meal End: Not detected"
-        binding.textMealDuration.text = "Duration: 0 minutes"
-
-        Toast.makeText(this, "Audio processing stopped", Toast.LENGTH_SHORT).show()
+    private fun windowText(): String {
+        if (!store.isSet) return "--:--"
+        return String.format("%02d:%02d–%02d:%02d", store.hour, store.minute, (store.hour + 2) % 24, store.minute)
     }
 
     private fun updateMealTimeDisplay(startTime: Long?, endTime: Long?) {
-        val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-        val startText = if (startTime != null) dateFormat.format(Date(startTime)) else "Not detected"
-        // If end time is null, it means the meal is still ongoing.
-        val endText = if (endTime != null) dateFormat.format(Date(endTime)) else "Ongoing"
-
-        binding.textMealStart.text = "Meal Start: $startText"
-        binding.textMealEnd.text = "Meal End: $endText"
-
-        if (startTime != null && endTime != null) {
-            // Calculate duration in minutes.
-            val duration = (endTime - startTime) / 1000 / 60
-            binding.textMealDuration.text = "Duration: $duration minutes"
-        } else if (startTime != null && endTime == null) {
-            // If meal is ongoing, display current duration.
-            val currentDuration = (System.currentTimeMillis() - startTime) / 1000 / 60
-            binding.textMealDuration.text = "Duration (Ongoing): $currentDuration minutes"
-        } else {
-            // No meal detected yet.
-            binding.textMealDuration.text = "Duration: 0 minutes"
+        binding.textMealStart.text = startTime?.let { clockFmt.format(Date(it)) } ?: "--:--:--"
+        binding.textMealEnd.text = when {
+            startTime == null -> "--:--:--"
+            endTime == null -> "ongoing"
+            else -> clockFmt.format(Date(endTime))
+        }
+        binding.textMealDuration.text = if (startTime == null) "--" else {
+            val minutes = ((endTime ?: System.currentTimeMillis()) - startTime) / 60000
+            if (endTime == null) "$minutes min (ongoing)" else "$minutes min"
         }
     }
 
-    private fun saveScheduledTime(hour: Int, minute: Int) {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putInt(KEY_SCHEDULED_HOUR, hour)
-            putInt(KEY_SCHEDULED_MINUTE, minute)
-            apply()
-        }
-        Log.d(TAG, "Scheduled time saved: $hour:$minute")
+    // ------------------------------------------------------------------------ permissions / reliability checks
+    private fun hasMic() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    private fun checkPermissions() {
+        val perms = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        val missing = perms.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) onReady() else requestPermissions.launch(missing.toTypedArray())
     }
 
-    private fun loadScheduledTime(): Pair<Int, Int> {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val hour = prefs.getInt(KEY_SCHEDULED_HOUR, DEFAULT_SCHEDULE_TIME)
-        val minute = prefs.getInt(KEY_SCHEDULED_MINUTE, DEFAULT_SCHEDULE_TIME)
-        Log.d(TAG, "Scheduled time loaded: $hour:$minute")
-        return Pair(hour, minute)
+    private fun exactAlarmMissing(): Boolean = false   // setAlarmClock needs no exact-alarm permission
+
+    private fun batteryOptimized(): Boolean =
+        !(getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
+
+    /** Only shown once a window is set. Tapping opens the matching system screen. */
+    private fun updateSetupWarning() {
+        val msg = when {
+            !store.isSet -> null
+            !Settings.canDrawOverlays(this) ->
+                "Allow \"Display over other apps\": Android only lets the app record from the background with it. Tap to allow."
+            batteryOptimized() -> "Battery optimization may stop background recording. Tap to exempt this app."
+            else -> null
+        }
+        binding.textSetup.text = msg
+        binding.textSetup.visibility = if (msg == null) android.view.View.GONE else android.view.View.VISIBLE
     }
 
-    private fun clearScheduledTime() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            remove(KEY_SCHEDULED_HOUR)
-            remove(KEY_SCHEDULED_MINUTE)
-            apply()
+    private fun openSetupSettings() {
+        try {
+            val uri = Uri.parse("package:$packageName")
+            if (!Settings.canDrawOverlays(this)) {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, uri))
+            } else {
+                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, uri))
+            }
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Cannot open settings: ${e.message}")
         }
-        Log.d(TAG, "Scheduled time cleared.")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // Unbind the service to prevent service leaks when the activity is destroyed.
-        if (serviceBound) {
-            unbindService(serviceConnection)
-            serviceBound = false // Update service bound status
-        }
-        // It's good practice to ensure the service is fully stopped if it's not needed
-        // to run in the background without the activity.
-        audioService?.stopProcessing()
     }
 }
