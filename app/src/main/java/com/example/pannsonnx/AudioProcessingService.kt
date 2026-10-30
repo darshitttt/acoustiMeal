@@ -95,12 +95,15 @@ class AudioProcessingService : Service() {
     private lateinit var cfg: DeployConfig
     private lateinit var diarAcc: DiarizationAccumulator
     private var mealIdx = IntArray(0)
+    private var episodeDetector: MealEpisodeDetector? = null   // meal / no-meal episode model (assets/meal_model.json); null = old tag-timeout logic
+    private val recentTags = ArrayDeque<TimedTags>()            // recent tags, to back-fill a meal whose start is found retroactively
     private var recStartMs = 0L                             // wall-clock time of the first recorded sample
     private val outputDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
     // -------------------------------------------------------------------------------------------------------------
 
     private val MEAL_SESSION_TIMEOUT_MS = 5 * 60 * 1000L
     private val MIN_MEAL_DURATION_MS = 5 * 60 * 1000L
+    private val RECENT_TAGS_MS = 15 * 60 * 1000L                // must exceed the detector's start lag (about window/2 + (min_on-0.5) * stride)
 
     private val kitchenRelatedTags = setOf(
         "cooking", "Dishes", "frying", "boiling", "chopping", "microwave",
@@ -177,6 +180,9 @@ class AudioProcessingService : Service() {
             mealIdx = cfg.mealIndices.takeIf { it.isNotEmpty() }
                 ?: cfg.classes.indices.filter { i -> kitchenRelatedTags.any { cfg.classes[i].contains(it, ignoreCase = true) } }.toIntArray()
             Log.i(TAG, "Meal tags: ${mealIdx.map { cfg.classes[it] }}")
+            episodeDetector = MealModelConfig.load(this, cfg)?.let { MealEpisodeDetector(it) }
+            recentTags.clear()
+            Log.i(TAG, if (episodeDetector != null) "Meal detection: episode model" else "Meal detection: legacy tag timeout")
 
             mealStart = null
             lastMealTagMs = 0L
@@ -260,24 +266,59 @@ class AudioProcessingService : Service() {
         val now = System.currentTimeMillis()
         val detected = detectedTags(out.tagProbs)
 
+        val det = episodeDetector
+        val episodeEvents = det?.push(out.tagProbs) ?: emptyList()
+
         // meal state machine
-        if (mealIdx.any { out.tagProbs[it] >= cfg.tagThresholds[it] }) {
-            lastMealTagMs = now
-            if (mealStart == null) mealStart = now
-            postMeal(mealStart, null)
+        if (det == null) {
+            // legacy: any meal-group tag keeps the meal alive, a timeout ends it (see checkMealTimeout)
+            if (mealIdx.any { out.tagProbs[it] >= cfg.tagThresholds[it] }) {
+                lastMealTagMs = now
+                if (mealStart == null) mealStart = now
+                postMeal(mealStart, null)
+            }
+        } else {
+            // episode model: start / end times arrive retroactively (seconds since the recording started)
+            for (e in episodeEvents) {
+                val tMs = recStartMs + (e.timeS * 1000).toLong()
+                if (e.type == MealEventType.START) {
+                    if (mealStart == null) {
+                        mealStart = tMs
+                        mealTags.clear()
+                        if (!shouldSaveTags) recentTags.filterTo(mealTags) { it.ts >= tMs }   // tags since the real start
+                        postMeal(mealStart, null)
+                    }
+                } else {
+                    val s = mealStart
+                    if (s != null) {
+                        closeMeal(s, tMs)
+                        mealStart = null
+                        lastMealTagMs = 0L
+                    }
+                }
+            }
         }
 
         // tags: stream to file if the switch is on, otherwise keep only the current meal's tags (bounded memory)
         if (shouldSaveTags) writeTags(now, detected)
-        else if (mealStart != null) mealTags.add(TimedTags(now, detected))
+        else {
+            val timed = TimedTags(now, detected)
+            if (mealStart != null) mealTags.add(timed)
+            if (det != null) {   // bounded history so that a retroactive meal start can be back-filled
+                recentTags.addLast(timed)
+                while (recentTags.isNotEmpty() && now - recentTags.first().ts > RECENT_TAGS_MS) recentTags.removeFirst()
+            }
+        }
 
         // immutable snapshot for the UI
         val shown = ArrayList(detected)
         if (out.overlapFraction > 0f) shown.add(AudioTag("Overlapping speech (>=2 speakers)", out.overlapFraction))
+        if (det != null) det.lastProbability?.let { p -> shown.add(AudioTag(if (det.isOn) "Meal episode: ON" else "Meal episode: off", p)) }
         uiHandler.post { onTagsUpdatedListener?.invoke(shown) }
     }
 
     private fun checkMealTimeout() {
+        if (episodeDetector != null) return          // the episode model decides when a meal ends
         val s = mealStart ?: return
         if (System.currentTimeMillis() - lastMealTagMs > MEAL_SESSION_TIMEOUT_MS) {
             closeMeal(s, lastMealTagMs)
@@ -289,7 +330,10 @@ class AudioProcessingService : Service() {
     /** Persists one finished meal (timeout, user stop or window end all go through here). */
     private fun closeMeal(startMs: Long, endMs: Long) {
         writeMealTime(startMs, endMs)
-        if (!shouldSaveTags) mealTags.forEach { writeTags(it.ts, it.tags) }
+        if (!shouldSaveTags) {
+            val keep = if (episodeDetector != null) mealTags.filter { it.ts <= endMs } else mealTags
+            keep.forEach { writeTags(it.ts, it.tags) }
+        }
         mealTags.clear()
         finalizeDiarization(startMs, endMs)
         postMeal(startMs, endMs)
