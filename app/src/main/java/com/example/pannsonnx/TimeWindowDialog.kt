@@ -33,16 +33,16 @@ class TimeWindowDialog : DialogFragment() {
         binding.spinnerHour.setSelection(h * 4 + (m / 15))
 
         return AlertDialog.Builder(requireContext())
-            .setTitle("Daily recording window")
+            .setTitle(R.string.dialog_title)
             .setView(binding.root)
-            .setPositiveButton("Start") { _, _ ->
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 val idx = binding.spinnerHour.selectedItemPosition
                 parentFragmentManager.setFragmentResult(REQUEST_KEY, Bundle().apply {
                     putInt(KEY_HOUR, idx / 4)
                     putInt(KEY_MINUTE, (idx % 4) * 15)
                 })
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(R.string.dialog_cancel, null)
             .create()
     }
 

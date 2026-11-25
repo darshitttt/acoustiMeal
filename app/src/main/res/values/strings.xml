@@ -1,22 +1,56 @@
 <resources>
-<string name="app_name">AcoustiMeal</string>
-<string name="start_recording">Start Recording</string>
-<string name="stop_recording">Stop Recording</string>
-<string name="meal_duration_tracker">Meal Duration Tracker</string>
-<string name="detected_audio_tags">Detected Audio Tags</string>
-<string name="ready_to_start">Ready to start</string>
-<string name="recording_processing">Recording and processing audio...</string>
-<string name="stopped">Stopped</string>
-<string name="meal_start">Meal Start: %1$s</string>
-<string name="meal_end">Meal End: %1$s</string>
-<string name="meal_duration">Duration: %1$d minutes</string>
-<string name="not_detected">Not detected</string>
-<string name="ongoing">Ongoing</string>
-<string name="permissions_required">Permissions required for audio recording</string>
-<string name="audio_processing_started">Audio processing started for 2 hours from %1$d:00</string>
-<string name="audio_processing_stopped">Audio processing stopped</string>
-<string name="select_time_window">Select 2-Hour Recording Window</string>
-<string name="select_starting_hour">Choose the starting hour for a 2-hour audio recording session</string>
-<string name="start">Start</string>
-<string name="cancel">Cancel</string>
+    <string name="app_name">AcoustiMeal</string>
+    <string name="subtitle">eating-behaviour audio logger</string>
+    <string name="lang_switch">Deutsch</string>
+
+    <string name="section_session">Session</string>
+    <string name="section_meal">Meal detection</string>
+    <string name="section_tags">Detected audio tags</string>
+    <string name="start_recording">Start Recording</string>
+    <string name="stop_recording">Stop Recording</string>
+    <string name="label_start">Start</string>
+    <string name="label_end">End</string>
+    <string name="label_duration">Duration</string>
+    <string name="save_tags">Save audio tags</string>
+
+    <string name="status_ready">Ready to start</string>
+    <string name="status_recording">Recording and processing audio...</string>
+    <string name="status_starting">Starting...</string>
+    <string name="status_stopped_today">Stopped for today</string>
+    <string name="status_waiting">Waiting for scheduled start</string>
+    <string name="status_idle">Idle</string>
+    <string name="detail_no_window">No daily window set</string>
+    <string name="detail_daily">Daily %1$s</string>
+    <string name="detail_until">Until %1$s · daily %2$s</string>
+    <string name="detail_today">Today %1$s · daily %2$s</string>
+    <string name="detail_tomorrow">Next: tomorrow %1$s · daily %2$s</string>
+
+    <string name="meal_ongoing">ongoing</string>
+    <string name="meal_minutes">%1$d min</string>
+    <string name="meal_minutes_ongoing">%1$d min (ongoing)</string>
+
+    <string name="toast_mic_required">Microphone permission is required for recording</string>
+    <string name="toast_window_set">Daily window set: %1$s</string>
+    <string name="toast_stopped_today">Stopped for today</string>
+    <string name="warn_overlay">Allow \"Display over other apps\": Android only lets the app record from the background with it. Tap to allow.</string>
+    <string name="warn_battery">Battery optimization may stop background recording. Tap to exempt this app.</string>
+
+    <string name="dialog_title">Daily recording window</string>
+    <string name="dialog_start_time">Daily start time</string>
+    <string name="dialog_info">Every day the app records and analyzes audio for 2 hours from this time, even when the app is closed. Stop Recording skips the rest of that day only.</string>
+    <string name="dialog_ok">Start</string>
+    <string name="dialog_cancel">Cancel</string>
+
+    <string name="notif_waiting">Waiting for the next recording window</string>
+    <string name="notif_recording">Recording and analyzing audio...</string>
+    <string name="notif_channel">Audio Processing</string>
+    <string name="svc_init_failed">AudioRecord initialization failed. Ensure permissions.</string>
+    <string name="svc_window_finished">Recording window finished.</string>
+    <string name="svc_permission_denied">Permission denied for audio recording. Please grant it in app settings.</string>
+    <string name="svc_error">Error during audio processing: %1$s</string>
+    <string name="svc_silenced">Microphone is silenced by Android. Exempt the app from battery optimization and re-open it.</string>
+
+    <string name="tag_overlap">Overlapping speech (>=2 speakers)</string>
+    <string name="tag_episode_on">Meal episode: ON</string>
+    <string name="tag_episode_off">Meal episode: off</string>
 </resources>

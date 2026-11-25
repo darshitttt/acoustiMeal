@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
     private val requestPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             if (hasMic()) onReady()
-            else Toast.makeText(this, "Microphone permission is required for recording", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this, getString(R.string.toast_mic_required), Toast.LENGTH_LONG).show()
         }
 
     /** Service tells us when a session starts/stops (e.g. started by the alarm while the app is open). */
@@ -100,6 +100,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.buttonStop.setOnClickListener { stopForToday() }
         binding.textSetup.setOnClickListener { openSetupSettings() }
+        binding.textLang.setOnClickListener { Lang.toggle(this) }   // EN <-> DE, activity is recreated
 
         updateMealTimeDisplay(null, null)
         checkPermissions()
@@ -137,7 +138,7 @@ class MainActivity : AppCompatActivity() {
         ScheduleManager.reschedule(this, startIfActive = true)
         ScheduleManager.arm(this)   // start the always-on service while the app is visible
         refreshUi()
-        Toast.makeText(this, "Daily window set: ${windowText()}", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, getString(R.string.toast_window_set, windowText()), Toast.LENGTH_LONG).show()
     }
 
     /** "Stop Recording" = stop now and skip the rest of today's window; tomorrow's window runs as usual. */
@@ -148,7 +149,7 @@ class MainActivity : AppCompatActivity() {
         }
         updateMealTimeDisplay(null, null)
         refreshUi()
-        Toast.makeText(this, "Stopped for today", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.toast_stopped_today), Toast.LENGTH_SHORT).show()
     }
 
     private fun onReady() {
@@ -180,33 +181,34 @@ class MainActivity : AppCompatActivity() {
         val dot: Int
         when {
             running -> {
-                status = "Recording and processing audio..."
-                detail = next?.let { "Until ${timeFmt.format(Date(it.endMs))} · daily ${windowText()}" } ?: "Daily ${windowText()}"
+                status = getString(R.string.status_recording)
+                detail = next?.let { getString(R.string.detail_until, timeFmt.format(Date(it.endMs)), windowText()) }
+                    ?: getString(R.string.detail_daily, windowText())
                 dot = R.color.rec
             }
             !store.isSet -> {
-                status = "Ready to start"
-                detail = "No daily window set"
+                status = getString(R.string.status_ready)
+                detail = getString(R.string.detail_no_window)
                 dot = R.color.ink_muted
             }
             next != null && next.startMs <= now -> {
-                status = "Starting..."
-                detail = "Daily ${windowText()}"
+                status = getString(R.string.status_starting)
+                detail = getString(R.string.detail_daily, windowText())
                 dot = R.color.warn
             }
             stoppedToday -> {
-                status = "Stopped for today"
-                detail = "Next: tomorrow ${timeFmt.format(Date(next?.startMs ?: now))} · daily ${windowText()}"
+                status = getString(R.string.status_stopped_today)
+                detail = getString(R.string.detail_tomorrow, timeFmt.format(Date(next?.startMs ?: now)), windowText())
                 dot = R.color.ink_muted
             }
             nextToday -> {
-                status = "Waiting for scheduled start"
-                detail = "Today ${timeFmt.format(Date(next!!.startMs))} · daily ${windowText()}"
+                status = getString(R.string.status_waiting)
+                detail = getString(R.string.detail_today, timeFmt.format(Date(next!!.startMs)), windowText())
                 dot = R.color.warn
             }
             else -> {
-                status = "Idle"
-                detail = "Next: tomorrow ${timeFmt.format(Date(next?.startMs ?: now))} · daily ${windowText()}"
+                status = getString(R.string.status_idle)
+                detail = getString(R.string.detail_tomorrow, timeFmt.format(Date(next?.startMs ?: now)), windowText())
                 dot = R.color.ok
             }
         }
@@ -229,12 +231,12 @@ class MainActivity : AppCompatActivity() {
         binding.textMealStart.text = startTime?.let { clockFmt.format(Date(it)) } ?: "--:--:--"
         binding.textMealEnd.text = when {
             startTime == null -> "--:--:--"
-            endTime == null -> "ongoing"
+            endTime == null -> getString(R.string.meal_ongoing)
             else -> clockFmt.format(Date(endTime))
         }
         binding.textMealDuration.text = if (startTime == null) "--" else {
             val minutes = ((endTime ?: System.currentTimeMillis()) - startTime) / 60000
-            if (endTime == null) "$minutes min (ongoing)" else "$minutes min"
+            if (endTime == null) getString(R.string.meal_minutes_ongoing, minutes.toInt()) else getString(R.string.meal_minutes, minutes.toInt())
         }
     }
 
@@ -259,8 +261,8 @@ class MainActivity : AppCompatActivity() {
         val msg = when {
             !store.isSet -> null
             !Settings.canDrawOverlays(this) ->
-                "Allow \"Display over other apps\": Android only lets the app record from the background with it. Tap to allow."
-            batteryOptimized() -> "Battery optimization may stop background recording. Tap to exempt this app."
+                getString(R.string.warn_overlay)
+            batteryOptimized() -> getString(R.string.warn_battery)
             else -> null
         }
         binding.textSetup.text = msg

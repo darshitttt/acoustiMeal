@@ -1,0 +1,56 @@
+<resources>
+    <string name="app_name">AcoustiMeal</string>
+    <string name="subtitle">Audio-Logger für Essverhalten</string>
+    <string name="lang_switch">English</string>
+
+    <string name="section_session">Sitzung</string>
+    <string name="section_meal">Mahlzeiterkennung</string>
+    <string name="section_tags">Erkannte Audio-Tags</string>
+    <string name="start_recording">Aufnahme starten</string>
+    <string name="stop_recording">Aufnahme stoppen</string>
+    <string name="label_start">Beginn</string>
+    <string name="label_end">Ende</string>
+    <string name="label_duration">Dauer</string>
+    <string name="save_tags">Audio-Tags speichern</string>
+
+    <string name="status_ready">Bereit zum Start</string>
+    <string name="status_recording">Audio wird aufgenommen und verarbeitet...</string>
+    <string name="status_starting">Startet...</string>
+    <string name="status_stopped_today">Für heute gestoppt</string>
+    <string name="status_waiting">Warten auf geplanten Start</string>
+    <string name="status_idle">Inaktiv</string>
+    <string name="detail_no_window">Kein tägliches Zeitfenster festgelegt</string>
+    <string name="detail_daily">Täglich %1$s</string>
+    <string name="detail_until">Bis %1$s · täglich %2$s</string>
+    <string name="detail_today">Heute %1$s · täglich %2$s</string>
+    <string name="detail_tomorrow">Nächstes: morgen %1$s · täglich %2$s</string>
+
+    <string name="meal_ongoing">läuft</string>
+    <string name="meal_minutes">%1$d Min.</string>
+    <string name="meal_minutes_ongoing">%1$d Min. (läuft)</string>
+
+    <string name="toast_mic_required">Für die Aufnahme wird die Mikrofonberechtigung benötigt</string>
+    <string name="toast_window_set">Tägliches Zeitfenster festgelegt: %1$s</string>
+    <string name="toast_stopped_today">Für heute gestoppt</string>
+    <string name="warn_overlay">Bitte \"Über anderen Apps anzeigen\" erlauben: Nur damit lässt Android die App im Hintergrund aufnehmen. Zum Erlauben tippen.</string>
+    <string name="warn_battery">Die Akku-Optimierung kann die Hintergrundaufnahme stoppen. Tippen, um die App auszunehmen.</string>
+
+    <string name="dialog_title">Tägliches Aufnahmefenster</string>
+    <string name="dialog_start_time">Tägliche Startzeit</string>
+    <string name="dialog_info">Die App nimmt ab dieser Uhrzeit jeden Tag 2 Stunden lang Audio auf und analysiert es, auch wenn die App geschlossen ist. „Aufnahme stoppen“ überspringt nur den Rest des heutigen Tages.</string>
+    <string name="dialog_ok">Starten</string>
+    <string name="dialog_cancel">Abbrechen</string>
+
+    <string name="notif_waiting">Warten auf das nächste Aufnahmefenster</string>
+    <string name="notif_recording">Audio wird aufgenommen und analysiert...</string>
+    <string name="notif_channel">Audioverarbeitung</string>
+    <string name="svc_init_failed">AudioRecord konnte nicht initialisiert werden. Berechtigungen prüfen.</string>
+    <string name="svc_window_finished">Aufnahmefenster beendet.</string>
+    <string name="svc_permission_denied">Mikrofonberechtigung verweigert. Bitte in den App-Einstellungen erteilen.</string>
+    <string name="svc_error">Fehler bei der Audioverarbeitung: %1$s</string>
+    <string name="svc_silenced">Android hat das Mikrofon stummgeschaltet. App von der Akku-Optimierung ausnehmen und neu öffnen.</string>
+
+    <string name="tag_overlap">Überlappende Sprache (>=2 Sprecher)</string>
+    <string name="tag_episode_on">Mahlzeit-Episode: AN</string>
+    <string name="tag_episode_off">Mahlzeit-Episode: aus</string>
+</resources>

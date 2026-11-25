@@ -17,22 +17,54 @@
         android:paddingBottom="16dp">
 
         <!-- header -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:text="AcoustiMeal"
-            android:textColor="@color/ink"
-            android:textSize="22sp" />
-
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="14dp"
-            android:fontFamily="monospace"
-            android:text="eating-behaviour audio logger"
-            android:textColor="@color/ink_muted"
-            android:textSize="12sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/app_name"
+                    android:textColor="@color/ink"
+                    android:textSize="22sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:text="@string/subtitle"
+                    android:textColor="@color/ink_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- language switch: shows the language you can switch TO -->
+            <TextView
+                android:id="@+id/text_lang"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:clickable="true"
+                android:focusable="true"
+                android:fontFamily="monospace"
+                android:minHeight="40dp"
+                android:gravity="center"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:text="@string/lang_switch"
+                android:textColor="@color/accent"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
 
         <!-- session -->
         <LinearLayout
@@ -47,7 +79,7 @@
                 style="@style/Text.Overline"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Session" />
+                android:text="@string/section_session" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -69,7 +101,7 @@
                     android:layout_marginStart="10dp"
                     android:layout_weight="1"
                     android:fontFamily="sans-serif-medium"
-                    android:text="Ready to start"
+                    android:text="@string/status_ready"
                     android:textColor="@color/ink"
                     android:textSize="17sp" />
             </LinearLayout>
@@ -80,7 +112,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:fontFamily="monospace"
-                android:text="No daily window set"
+                android:text="@string/detail_no_window"
                 android:textColor="@color/ink_muted"
                 android:textSize="12sp" />
 
@@ -97,7 +129,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="6dp"
                     android:layout_weight="1"
-                    android:text="Start Recording"
+                    android:text="@string/start_recording"
                     android:textAllCaps="false"
                     app:cornerRadius="8dp" />
 
@@ -109,7 +141,7 @@
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
                     android:enabled="false"
-                    android:text="Stop Recording"
+                    android:text="@string/stop_recording"
                     android:textAllCaps="false"
                     android:textColor="@color/stop_content"
                     app:cornerRadius="8dp"
@@ -143,7 +175,7 @@
                 style="@style/Text.Overline"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Meal detection" />
+                android:text="@string/section_meal" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -156,7 +188,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Start" />
+                    android:text="@string/label_start" />
 
                 <TextView
                     android:id="@+id/text_meal_start"
@@ -177,7 +209,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="End" />
+                    android:text="@string/label_end" />
 
                 <TextView
                     android:id="@+id/text_meal_end"
@@ -198,7 +230,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="Duration" />
+                    android:text="@string/label_duration" />
 
                 <TextView
                     android:id="@+id/text_meal_duration"
@@ -233,7 +265,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Save audio tags"
+                    android:text="@string/save_tags"
                     android:textColor="@color/ink"
                     android:textSize="15sp" />
 
@@ -265,7 +297,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="16dp"
-                android:text="Detected audio tags" />
+                android:text="@string/section_tags" />
 
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/recycler_view_tags"

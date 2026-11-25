@@ -50,8 +50,6 @@ class AudioProcessingService : Service() {
         const val ACTION_STATE_CHANGED = "com.example.pannsonnx.action.STATE_CHANGED"
         private const val CHANNEL_ID = "AUDIO_PROCESSING"
         private const val NOTIFICATION_ID = 1
-        private const val WAITING_TEXT = "Waiting for the next recording window"
-        private const val RECORDING_TEXT = "Recording and analyzing audio..."
         private const val OUTPUT_DIR = "AcoustiMeal"
 
         /** True from session start until cleanup finished. Readable from any thread. */
@@ -104,7 +102,8 @@ class AudioProcessingService : Service() {
     // -------------------------------------------------------------------------------------------------------------
 
     private val MEAL_SESSION_TIMEOUT_MS = 5 * 60 * 1000L
-    private val MIN_MEAL_DURATION_MS = 5 * 60 * 1000L
+    private val UI_SHOW_AFTER_MS = 5 * 60 * 1000L                // the UI shows a meal only once it has lasted this long
+    private val MIN_MEAL_DURATION_MS = 7 * 60 * 1000L            // shorter episodes are discarded: not logged, not stored, not shown
     private val EPISODE_TAG_TIMEOUT_MS = 8 * 60 * 1000L          // episode mode safety net: end a meal when no meal-group tag fired for this long
     private val RECENT_TAGS_MS = 15 * 60 * 1000L                // must exceed the detector's start lag (about window/2 + (min_on-0.5) * stride)
 
@@ -115,6 +114,9 @@ class AudioProcessingService : Service() {
     )
 
     private val TAG = "AudioProcessingService"
+
+    /** String in the app's UI language (the service has no activity, so Android < 13 needs this). */
+    private fun str(id: Int, vararg args: Any): String = Lang.context(this).getString(id, *args)
 
     inner class AudioServiceBinder : Binder() {
         fun getService(): AudioProcessingService = this@AudioProcessingService
@@ -128,7 +130,7 @@ class AudioProcessingService : Service() {
     fun setOnSummaryGeneratedListener(l: (AudioTagSummary) -> Unit) { onSummaryGeneratedListener = l }
     fun setOnRecordingStatusChangedListener(l: (Boolean) -> Unit) { onRecordingStatusChangedListener = l }
     fun setShouldSaveTags(save: Boolean) { shouldSaveTags = save }
-    fun currentMealStart(): Long? = mealStart
+    fun currentMealStart(): Long? = mealStart?.takeIf { System.currentTimeMillis() - it >= UI_SHOW_AFTER_MS }
 
     /** Call when the UI goes away so the service does not keep the activity alive. */
     fun clearListeners() {
@@ -154,7 +156,7 @@ class AudioProcessingService : Service() {
 
         // ACTION_START: from the UI (app visible -> Android grants mic access to this service instance) or from the alarm.
         // The service then stays alive; the alarm only sends it a new ACTION_START at the next window.
-        startForeground(NOTIFICATION_ID, createNotification(WAITING_TEXT))
+        startForeground(NOTIFICATION_ID, createNotification(R.string.notif_waiting))
         isArmed = true
 
         val now = System.currentTimeMillis()
@@ -166,7 +168,7 @@ class AudioProcessingService : Service() {
     private fun beginRecording(endMs: Long) {
         shouldSaveTags = ScheduleStore(this).saveTags
         isRunning = true
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, createNotification(RECORDING_TEXT))
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, createNotification(R.string.notif_recording))
         notifyState(true)
         recordingJob = serviceScope.launch { runSession(endMs) }
     }
@@ -195,7 +197,7 @@ class AudioProcessingService : Service() {
             val rec = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, audioFormat, bufferSize)
             record = rec
             if (rec.state != AudioRecord.STATE_INITIALIZED) {
-                toast("AudioRecord initialization failed. Ensure permissions.")
+                toast(str(R.string.svc_init_failed))
                 return
             }
             rec.startRecording()
@@ -203,15 +205,15 @@ class AudioProcessingService : Service() {
             Log.i(TAG, "AudioRecord running at ${rec.sampleRate} Hz (requested $sampleRate Hz), until ${Date(endMs)}")
 
             readLoop(rec, model, endMs)
-            if (System.currentTimeMillis() >= endMs) toast("Recording window finished.")
+            if (System.currentTimeMillis() >= endMs) toast(str(R.string.svc_window_finished))
         } catch (e: CancellationException) {
             throw e
         } catch (e: SecurityException) {
             Log.e(TAG, "Microphone permission denied", e)
-            toast("Permission denied for audio recording. Please grant it in app settings.")
+            toast(str(R.string.svc_permission_denied))
         } catch (e: Exception) {
             Log.e(TAG, "Session failed: ${e.message}", e)
-            toast("Error during audio processing: ${e.message}")
+            toast(str(R.string.svc_error, e.message ?: ""))
         } finally {
             withContext(NonCancellable) { finishSession(record, model, endMs) }
         }
@@ -236,7 +238,7 @@ class AudioProcessingService : Service() {
                 if (System.currentTimeMillis() > checkUntil) {
                     if (peak == 0) {
                         Log.e(TAG, "Microphone delivers only silence (Android blocked background mic access)")
-                        toast("Microphone is silenced by Android. Exempt the app from battery optimization and re-open it.")
+                        toast(str(R.string.svc_silenced))
                     }
                     checkUntil = 0
                 }
@@ -279,7 +281,7 @@ class AudioProcessingService : Service() {
             if (mealIdx.any { out.tagProbs[it] >= cfg.tagThresholds[it] }) {
                 lastMealTagMs = now
                 if (mealStart == null) mealStart = now
-                postMeal(mealStart, null)
+                postMealOngoing()
             }
         } else {
             // evidence of eating-related sounds (same tags as the legacy logic): only used as a safety net, see checkMealTimeout
@@ -293,7 +295,7 @@ class AudioProcessingService : Service() {
                         lastMealTagMs = now          // grace period for the safety-net timeout
                         mealTags.clear()
                         if (!shouldSaveTags) recentTags.filterTo(mealTags) { it.ts >= tMs }   // tags since the real start
-                        postMeal(mealStart, null)
+                        postMealOngoing()
                     }
                 } else {
                     val s = mealStart
@@ -305,7 +307,7 @@ class AudioProcessingService : Service() {
                 }
             }
             // the UI computes the running duration only when it receives an update, so refresh it on every window
-            mealStart?.let { postMeal(it, null) }
+            postMealOngoing()
             logEpisodeWindow(det, now)
         }
 
@@ -322,8 +324,8 @@ class AudioProcessingService : Service() {
 
         // immutable snapshot for the UI
         val shown = ArrayList(detected)
-        if (out.overlapFraction > 0f) shown.add(AudioTag("Overlapping speech (>=2 speakers)", out.overlapFraction))
-        if (det != null) det.lastProbability?.let { p -> shown.add(AudioTag(if (det.isOn) "Meal episode: ON" else "Meal episode: off", p)) }
+        if (out.overlapFraction > 0f) shown.add(AudioTag(str(R.string.tag_overlap), out.overlapFraction))
+        if (det != null) det.lastProbability?.let { p -> shown.add(AudioTag(str(if (det.isOn) R.string.tag_episode_on else R.string.tag_episode_off), p)) }
         uiHandler.post { onTagsUpdatedListener?.invoke(shown) }
     }
 
@@ -366,8 +368,18 @@ class AudioProcessingService : Service() {
         }
     }
 
-    /** Persists one finished meal (timeout, user stop or window end all go through here). */
-    private fun closeMeal(startMs: Long, endMs: Long) {
+    /**
+     * Persists one finished meal (timeout, user stop or window end all go through here).
+     * Episodes shorter than MIN_MEAL_DURATION_MS are discarded completely. Returns true if the meal was kept.
+     */
+    private fun closeMeal(startMs: Long, endMs: Long): Boolean {
+        if (endMs - startMs < MIN_MEAL_DURATION_MS) {
+            Log.i(TAG, "Meal episode of ${(endMs - startMs) / 1000} s discarded (shorter than ${MIN_MEAL_DURATION_MS / 60000} min)")
+            mealTags.clear()
+            diarAcc.discardBefore((endMs - recStartMs) / 1000.0)
+            postMeal(null, null)   // remove anything the UI showed for this episode
+            return false
+        }
         writeMealTime(startMs, endMs)
         if (!shouldSaveTags) {
             val keep = if (episodeDetector != null) mealTags.filter { it.ts <= endMs } else mealTags
@@ -376,6 +388,7 @@ class AudioProcessingService : Service() {
         mealTags.clear()
         finalizeDiarization(startMs, endMs)
         postMeal(startMs, endMs)
+        return true
     }
 
     // ----------------------------------------------------------------------------------------------- end of session
@@ -385,8 +398,9 @@ class AudioProcessingService : Service() {
 
         val s = mealStart
         if (s != null) {   // meal still running when the session ended (Stop button or window end): keep it
-            closeMeal(s, System.currentTimeMillis())
-            finalizeScope.launch { Log.d("GESIS_Server", "Server response: ${triggerServerTaskNative()}") }  // testing phase
+            if (closeMeal(s, System.currentTimeMillis())) {   // only a meal that was kept is reported to the server
+                finalizeScope.launch { Log.d("GESIS_Server", "Server response: ${triggerServerTaskNative()}") }  // testing phase
+            }
         }
         mealStart = null
         lastMealTagMs = 0L
@@ -407,7 +421,7 @@ class AudioProcessingService : Service() {
         ScheduleManager.reschedule(applicationContext, startIfActive = false, afterMs = endMs)
 
         // Do NOT stop the service: staying alive keeps the mic privilege for tomorrow's window.
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, createNotification(WAITING_TEXT))
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, createNotification(R.string.notif_waiting))
     }
 
     override fun onDestroy() {
@@ -419,6 +433,12 @@ class AudioProcessingService : Service() {
 
     // ----------------------------------------------------------------------------------------------- UI helpers
     private fun postMeal(s: Long?, e: Long?) { uiHandler.post { onMealTimeUpdatedListener?.invoke(s, e) } }
+
+    /** Running meal: shown in the UI only after UI_SHOW_AFTER_MS. */
+    private fun postMealOngoing() {
+        val s = mealStart ?: return
+        if (System.currentTimeMillis() - s >= UI_SHOW_AFTER_MS) postMeal(s, null)
+    }
 
     private fun notifyState(running: Boolean) {
         uiHandler.post { onRecordingStatusChangedListener?.invoke(running) }
@@ -542,12 +562,12 @@ class AudioProcessingService : Service() {
     // ------------------------------------------------------------------------------------------- notification
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Audio Processing", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, str(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
 
-    private fun createNotification(text: String): Notification {
+    private fun createNotification(textRes: Int): Notification {
         val open = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
@@ -555,7 +575,7 @@ class AudioProcessingService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("AcoustiMeal")
-            .setContentText(text)
+            .setContentText(str(textRes))
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setContentIntent(open)

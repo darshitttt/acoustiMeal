@@ -9,7 +9,7 @@
         style="@style/Text.Overline"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Daily start time" />
+        android:text="@string/dialog_start_time" />
 
     <Spinner
         android:id="@+id/spinner_hour"
@@ -21,7 +21,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Every day the app records and analyzes audio for 2 hours from this time, even when the app is closed. Stop Recording skips the rest of that day only."
+        android:text="@string/dialog_info"
         android:textColor="@color/ink_muted"
         android:textSize="13sp" />
 </LinearLayout>
