@@ -60,6 +60,15 @@ class MealEpisodeDetector(private val m: MealEpisodeModel) {
         private set
     val isOn: Boolean get() = on
 
+    /** Debug string: current run counters of the state machine. */
+    val debugState: String get() = "posRun=$posRun negRun=$negRun"
+
+    /** Switch to OFF from outside (safety net in the service) and forget the smoothing history. */
+    fun forceOff() {
+        on = false; posRun = 0; negRun = 0; startIdx = -1; lastPos = -1
+        recent.clear()
+    }
+
     fun reset() {
         frames = 0; windowIdx = -1; recent.clear(); on = false; posRun = 0; negRun = 0; startIdx = -1; lastPos = -1
         lastProbability = null; rawProbability = null; windowCount = 0

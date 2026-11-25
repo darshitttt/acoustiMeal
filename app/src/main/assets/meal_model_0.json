@@ -1,0 +1,60 @@
+{
+ "version": 1,
+ "frame_hop_s": 1.0,
+ "window_s": 180.0,
+ "stride_s": 60.0,
+ "features": [
+  {
+   "kind": "mean",
+   "class": "Cupboard open or close",
+   "mu": 0.014379221209446508,
+   "sd": 0.005468527974384666,
+   "coef": -1.9211463987399555
+  },
+  {
+   "kind": "events",
+   "class": "Dishes, pots, and pans",
+   "mu": 2.9765021819402486,
+   "sd": 2.0463211861837434,
+   "coef": 1.0020216933349761
+  },
+  {
+   "kind": "mean",
+   "class": "Typing",
+   "mu": 0.019360575087004173,
+   "sd": 0.017421061774037138,
+   "coef": -0.5150903369624408
+  },
+  {
+   "kind": "events",
+   "class": "Glass",
+   "mu": 1.9083585095669688,
+   "sd": 2.000138341957441,
+   "coef": -0.17929833429175993
+  },
+  {
+   "kind": "mean",
+   "class": "Walk, footsteps",
+   "mu": 0.03992279922612377,
+   "sd": 0.037263589765778315,
+   "coef": -2.0190285368050778
+  }
+ ],
+ "intercept": -1.6078148151694995,
+ "post": {
+  "smooth_n": 1,
+  "on_thr": 0.5,
+  "off_thr": 0.4,
+  "min_on": 3,
+  "min_off": 3
+ },
+ "thresholds": {
+  "Cupboard open or close": 0.09936963766813278,
+  "Dishes, pots, and pans": 0.09933353215456009,
+  "Typing": 0.7550967931747437,
+  "Glass": 0.24191853404045105,
+  "Walk, footsteps": 0.4037838578224182
+ },
+ "tag_model_sha256": "1e2185d20f5a7910b8ca163e6446ce47112aeced5e8f820191f680a02d06cc1f",
+ "tag_precision": "fp32"
+}

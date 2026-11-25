@@ -96,6 +96,8 @@ class AudioProcessingService : Service() {
     private lateinit var diarAcc: DiarizationAccumulator
     private var mealIdx = IntArray(0)
     private var episodeDetector: MealEpisodeDetector? = null   // meal / no-meal episode model (assets/meal_model.json); null = old tag-timeout logic
+    private var episodeLogged = 0L                              // episode windows already written to the log
+    private var episodeWriter: BufferedWriter? = null           // episode_log_*.csv: raw / smoothed probability and state per window
     private val recentTags = ArrayDeque<TimedTags>()            // recent tags, to back-fill a meal whose start is found retroactively
     private var recStartMs = 0L                             // wall-clock time of the first recorded sample
     private val outputDateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
@@ -103,6 +105,7 @@ class AudioProcessingService : Service() {
 
     private val MEAL_SESSION_TIMEOUT_MS = 5 * 60 * 1000L
     private val MIN_MEAL_DURATION_MS = 5 * 60 * 1000L
+    private val EPISODE_TAG_TIMEOUT_MS = 8 * 60 * 1000L          // episode mode safety net: end a meal when no meal-group tag fired for this long
     private val RECENT_TAGS_MS = 15 * 60 * 1000L                // must exceed the detector's start lag (about window/2 + (min_on-0.5) * stride)
 
     private val kitchenRelatedTags = setOf(
@@ -182,6 +185,7 @@ class AudioProcessingService : Service() {
             Log.i(TAG, "Meal tags: ${mealIdx.map { cfg.classes[it] }}")
             episodeDetector = MealModelConfig.load(this, cfg)?.let { MealEpisodeDetector(it) }
             recentTags.clear()
+            episodeLogged = 0L
             Log.i(TAG, if (episodeDetector != null) "Meal detection: episode model" else "Meal detection: legacy tag timeout")
 
             mealStart = null
@@ -278,12 +282,15 @@ class AudioProcessingService : Service() {
                 postMeal(mealStart, null)
             }
         } else {
+            // evidence of eating-related sounds (same tags as the legacy logic): only used as a safety net, see checkMealTimeout
+            if (mealIdx.any { out.tagProbs[it] >= cfg.tagThresholds[it] }) lastMealTagMs = now
             // episode model: start / end times arrive retroactively (seconds since the recording started)
             for (e in episodeEvents) {
                 val tMs = recStartMs + (e.timeS * 1000).toLong()
                 if (e.type == MealEventType.START) {
                     if (mealStart == null) {
                         mealStart = tMs
+                        lastMealTagMs = now          // grace period for the safety-net timeout
                         mealTags.clear()
                         if (!shouldSaveTags) recentTags.filterTo(mealTags) { it.ts >= tMs }   // tags since the real start
                         postMeal(mealStart, null)
@@ -297,6 +304,9 @@ class AudioProcessingService : Service() {
                     }
                 }
             }
+            // the UI computes the running duration only when it receives an update, so refresh it on every window
+            mealStart?.let { postMeal(it, null) }
+            logEpisodeWindow(det, now)
         }
 
         // tags: stream to file if the switch is on, otherwise keep only the current meal's tags (bounded memory)
@@ -318,12 +328,41 @@ class AudioProcessingService : Service() {
     }
 
     private fun checkMealTimeout() {
-        if (episodeDetector != null) return          // the episode model decides when a meal ends
         val s = mealStart ?: return
+        val det = episodeDetector
+        if (det != null) {
+            // The episode model needs several minutes of low scores to end a meal. Safety net: if no meal-group tag has
+            // fired for EPISODE_TAG_TIMEOUT_MS, end the meal at the last such tag and put the detector back to OFF.
+            if (System.currentTimeMillis() - lastMealTagMs > EPISODE_TAG_TIMEOUT_MS) {
+                Log.i(TAG, "Meal ended by safety-net timeout (no meal tag for ${EPISODE_TAG_TIMEOUT_MS / 60000} min)")
+                closeMeal(s, lastMealTagMs)
+                mealStart = null
+                lastMealTagMs = 0L
+                det.forceOff()
+            }
+            return
+        }
         if (System.currentTimeMillis() - lastMealTagMs > MEAL_SESSION_TIMEOUT_MS) {
             closeMeal(s, lastMealTagMs)
             mealStart = null
             lastMealTagMs = 0L
+        }
+    }
+
+    /** One line per analysis window (about once a minute): lets you see offline why the state is ON or OFF. */
+    private fun logEpisodeWindow(det: MealEpisodeDetector, now: Long) {
+        if (det.windowCount == episodeLogged) return
+        episodeLogged = det.windowCount
+        val raw = det.rawProbability ?: return
+        val smooth = det.lastProbability ?: return
+        Log.i(TAG, "episode window ${det.windowCount}: raw=%.2f smooth=%.2f on=${det.isOn} ${det.debugState}".format(raw, smooth))
+        val w = episodeWriter ?: openDocWriter("episode_log_${stamp()}.csv")?.also { episodeWriter = it; it.write("time,raw,smooth,on\n") } ?: return
+        try {
+            w.write("${outputDateFormat.format(Date(now))},%.4f,%.4f,${if (det.isOn) 1 else 0}\n".format(raw, smooth))
+            w.flush()
+        } catch (e: IOException) {
+            Log.e(TAG, "Error writing episode log: ${e.message}", e)
+            episodeWriter.closeQuietly(); episodeWriter = null
         }
     }
 
@@ -354,6 +393,7 @@ class AudioProcessingService : Service() {
 
         tagWriter.closeQuietly(); tagWriter = null
         mealWriter.closeQuietly(); mealWriter = null
+        episodeWriter.closeQuietly(); episodeWriter = null
         try { model?.close() } catch (e: Exception) { Log.w(TAG, "model.close: ${e.message}") }
 
         isRunning = false
